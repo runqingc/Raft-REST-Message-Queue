@@ -97,6 +97,7 @@ def append_entries():
     print("node " + str(raft_node.id) + "received APE from " + str(leader_id))
     raft_node.from_candidate_to_follower()
     raft_node.restart_election_timer()
+    return jsonify(term=raft_node.current_term, success=True)
 
 
 def run_internal():

@@ -136,7 +136,7 @@ class RaftNode:
             for future in as_completed(futures):
                 result = future.result()
                 print("node " + str(self.id) + " result = " + str(result))
-                if result.get('term') > self.current_term:
+                if result and result.get('term') > self.current_term:
                     self.current_term = result.get('term')
                     self.from_candidate_to_follower()
                     break
