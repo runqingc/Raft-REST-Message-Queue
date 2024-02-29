@@ -228,9 +228,13 @@ class RaftNode:
         if self.logs[index].operation == PUT_TOPIC_FLAG:
             self.state_machine[self.logs[index].topic] = []
             # suppose get topic will simply return a list, not deleting them
-        # elif self.logs[index].operation == GET_MESSAGE_FLAG:
-        #     self.state_machine[]
-        # Put/get message operation to be done
+        elif self.logs[index].operation == PUT_MESSAGE_FLAG:
+            print(str(self.id) + "before insert message: "+str(self.state_machine))
+            self.state_machine[self.logs[index].topic].append(self.logs[index].message)
+            print(str(self.id) + "after insert message: " + str(self.state_machine))
+        elif self.logs[index].operation == GET_MESSAGE_FLAG:
+            self.state_machine[self.logs[index].topic].pop(0)
+
 
     # try to find all commits that can be committed
     def leader_try_to_commit(self):

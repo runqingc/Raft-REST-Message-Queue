@@ -13,7 +13,7 @@ GET_TOPIC_FLAG = -1
 GET_MESSAGE_FLAG = -2
 
 CLIENT_REQUEST_TIMEOUT = 1
-topics = {}
+
 
 # Set up before request
 raft_node = RaftNode()
@@ -43,19 +43,19 @@ def create_topic():
     if topic and topic not in raft_node.state_machine:
         this_index = len(raft_node.logs)
         raft_node.logs.append(Log(raft_node.current_term, topic, "", PUT_TOPIC_FLAG))
-        print(str(raft_node.id) + " leader write a new log: " + str(raft_node.logs))
+        # print(str(raft_node.id) + " leader write a new log: " + str(raft_node.logs))
         raft_node.match_index[raft_node.id] = this_index
         # case 1: only 1 node in swarm, no need to wait majority consent
         if len(raft_node.config['addresses']) == 1:
             raft_node.apply_to_state_machine(this_index)
             return jsonify(success=True)
         # case 2: > 1 node in swarm, wait until success
-        log_index = len(raft_node.logs) - 1
+
         with ThreadPoolExecutor() as executor:
-            future = executor.submit(wait_for_commit, log_index, CLIENT_REQUEST_TIMEOUT)
+            future = executor.submit(wait_for_commit, this_index, CLIENT_REQUEST_TIMEOUT)
             success = future.result()
         if success:
-            raft_node.apply_to_state_machine(this_index)
+            # raft_node.apply_to_state_machine(this_index)
             return jsonify(success=True)
         else:
             return jsonify(success=False), 408
@@ -75,21 +75,52 @@ def get_topics():
 def put_message():
     topic = request.json.get('topic')
     message = request.json.get('message')
-    if topic not in topics:
+    if topic not in raft_node.state_machine:
         return jsonify(success=False), 404
     else:
-        topics[topic].append(message)
-        return jsonify(success=True)
+        this_index = len(raft_node.logs)
+        raft_node.logs.append(Log(raft_node.current_term, topic, message, PUT_MESSAGE_FLAG))
+        raft_node.match_index[raft_node.id] = this_index
+        # case 1: only 1 node in swarm, no need to wait majority consent
+        if len(raft_node.config['addresses']) == 1:
+            raft_node.apply_to_state_machine(this_index)
+            return jsonify(success=True)
+        # case 2: > 1 node in swarm, wait until success
+        with ThreadPoolExecutor() as executor:
+            future = executor.submit(wait_for_commit, this_index, CLIENT_REQUEST_TIMEOUT)
+            success = future.result()
+        if success:
+            # raft_node.apply_to_state_machine(this_index)
+            # print(str(raft_node.id) + " state_machine" + str(raft_node.state_machine))
+            return jsonify(success=True)
+        else:
+            return jsonify(success=False), 408
 
 
 # Get a message
 @external_app.route('/message/<topic>', methods=['GET'])
 def get_message(topic):
-    if topic not in topics or topics[topic] == []:
+    if topic not in raft_node.state_machine or raft_node.state_machine[topic] == []:
         return jsonify(success=False)
     else:
-        message = topics[topic].pop(0)
-        return jsonify(success=True, message=message)
+        this_index = len(raft_node.logs)
+        message = raft_node.state_machine[topic][0]
+        raft_node.logs.append(Log(raft_node.current_term, topic, "", GET_MESSAGE_FLAG))
+        raft_node.match_index[raft_node.id] = this_index
+        # case 1: only 1 node in swarm, no need to wait majority consent
+        if len(raft_node.config['addresses']) == 1:
+            raft_node.apply_to_state_machine(this_index)
+            return jsonify(success=True, message=message)
+        # case 2: > 1 node in swarm, wait until success
+        with ThreadPoolExecutor() as executor:
+            future = executor.submit(wait_for_commit, this_index, CLIENT_REQUEST_TIMEOUT)
+            success = future.result()
+        if success:
+            # print(str(raft_node.id) + " state_machine" + str(raft_node.state_machine))
+            # raft_node.apply_to_state_machine(this_index)
+            return jsonify(success=True, message=message)
+        else:
+            return jsonify(success=False), 408
 
 
 # Status API
@@ -138,8 +169,8 @@ def append_entries():
     # raft_node.restart_election_timer()
     # make the node's log same as leader's log
     raft_node.logs = [Log.from_dict(entry) for entry in data["entries"]]
-    print("node " + str(raft_node.id) + "received APE from " + str(leader_id) + " logs: " + str(raft_node.logs))
-    # commit to same stage as leader does [TO DO]
+    # print("node " + str(raft_node.id) + "received APE from " + str(leader_id) + " logs: " + str(raft_node.logs))
+    # commit to same stage as leader does
     # if leader_commit > my_last_commit, then commit these logs
     if data["leaderCommit"] > raft_node.commit_index:
         raft_node.follower_commit(data["leaderCommit"])
