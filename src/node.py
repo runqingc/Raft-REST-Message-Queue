@@ -14,7 +14,6 @@ GET_MESSAGE_FLAG = -2
 
 CLIENT_REQUEST_TIMEOUT = 1
 
-
 # Set up before request
 raft_node = RaftNode()
 internal_app = Flask("internal_app")
@@ -30,32 +29,22 @@ def wait_for_commit(log_index, timeout):
     return False
 
 
+def add_log_entry(term, topic, message="", flag=None):
+    this_index = len(raft_node.logs)
+    raft_node.logs.append(Log(term, topic, message, flag))
+    raft_node.match_index[raft_node.id] = this_index
+    return this_index
+
+
 # Topic APIs
 # Put a topic
 @external_app.route('/topic', methods=['PUT'])
 def create_topic():
     topic = request.json.get('topic')
-    # add to log
-    # wait for follower's reply
-    # check continuously if the commit_index has covered the index in log
-    # if true, then apply to state machine and return true to client
-    # if timed out, return false to client
     if topic and topic not in raft_node.state_machine:
-        this_index = len(raft_node.logs)
-        raft_node.logs.append(Log(raft_node.current_term, topic, "", PUT_TOPIC_FLAG))
-        # print(str(raft_node.id) + " leader write a new log: " + str(raft_node.logs))
-        raft_node.match_index[raft_node.id] = this_index
-        # case 1: only 1 node in swarm, no need to wait majority consent
-        if len(raft_node.config['addresses']) == 1:
-            raft_node.apply_to_state_machine(this_index)
-            return jsonify(success=True)
-        # case 2: > 1 node in swarm, wait until success
-
-        with ThreadPoolExecutor() as executor:
-            future = executor.submit(wait_for_commit, this_index, CLIENT_REQUEST_TIMEOUT)
-            success = future.result()
-        if success:
-            # raft_node.apply_to_state_machine(this_index)
+        log_index = add_log_entry(raft_node.current_term, topic, flag=PUT_TOPIC_FLAG)
+        if len(raft_node.config['addresses']) == 1 or await_commit_confirmation(log_index):
+            raft_node.apply_to_state_machine(log_index)
             return jsonify(success=True)
         else:
             return jsonify(success=False), 408
@@ -73,28 +62,22 @@ def get_topics():
 # Put a message
 @external_app.route('/message', methods=['PUT'])
 def put_message():
-    topic = request.json.get('topic')
-    message = request.json.get('message')
-    if topic not in raft_node.state_machine:
-        return jsonify(success=False), 404
-    else:
-        this_index = len(raft_node.logs)
-        raft_node.logs.append(Log(raft_node.current_term, topic, message, PUT_MESSAGE_FLAG))
-        raft_node.match_index[raft_node.id] = this_index
-        # case 1: only 1 node in swarm, no need to wait majority consent
-        if len(raft_node.config['addresses']) == 1:
-            raft_node.apply_to_state_machine(this_index)
-            return jsonify(success=True)
-        # case 2: > 1 node in swarm, wait until success
-        with ThreadPoolExecutor() as executor:
-            future = executor.submit(wait_for_commit, this_index, CLIENT_REQUEST_TIMEOUT)
-            success = future.result()
-        if success:
-            # raft_node.apply_to_state_machine(this_index)
-            # print(str(raft_node.id) + " state_machine" + str(raft_node.state_machine))
+    topic, message = request.json.get('topic'), request.json.get('message')
+    if topic in raft_node.state_machine:
+        log_index = add_log_entry(raft_node.current_term, topic, message, PUT_MESSAGE_FLAG)
+        if len(raft_node.config['addresses']) == 1 or await_commit_confirmation(log_index):
+            raft_node.apply_to_state_machine(log_index)
             return jsonify(success=True)
         else:
             return jsonify(success=False), 408
+    else:
+        return jsonify(success=False), 404
+
+
+def await_commit_confirmation(log_index):
+    with ThreadPoolExecutor() as executor:
+        future = executor.submit(wait_for_commit, log_index, CLIENT_REQUEST_TIMEOUT)
+        return future.result()
 
 
 # Get a message

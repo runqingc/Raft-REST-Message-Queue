@@ -7,7 +7,8 @@ run test
 ```sh
 cd test 
 python3 -m pytest message_queue_test.py 
-python3 -m pytest election_test.py  
+python3 -m pytest election_test.py
+python3 -m pytest replication_test.py  
 ```
 
 
