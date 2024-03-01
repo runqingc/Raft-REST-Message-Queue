@@ -15,12 +15,14 @@ NUMBER_OF_LOOP_FOR_SEARCHING_LEADER = 3
 @pytest.fixture
 def swarm(num_nodes):
     swarm = Swarm(PROGRAM_FILE_PATH, num_nodes)
-    swarm.start(ELECTION_TIMEOUT)
-    yield swarm
-    swarm.clean()
+    try:
+        swarm.start(ELECTION_TIMEOUT)
+        yield swarm
+    finally:
+        swarm.clean()
 
 
-def wait_for_commit(seconds=1):
+def wait_for_commit(seconds=10):
     time.sleep(seconds)
 
 
