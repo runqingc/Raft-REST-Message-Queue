@@ -1,6 +1,7 @@
 # Raft REST Message Queue (RRMQ)
 
-![Raft](./Raft_Picture.svg)
+
+<img src="./Raft_Picture.svg" alt="./Raft_Picture" width="300"/>
 
 ## Overview
 
@@ -16,9 +17,9 @@ This project implements the Raft consensus algorithm, designed for managing a re
 ## Project Structure
 
 -  `src/`：
-  - `log.py` - Handling of log entries. 
-  - `node.py` - Definition of a single node behavior. 
-  - `raft_node.py` - Implementation of Raft consensus protocol node.
+    - `log.py` - Handling of log entries. 
+    - `node.py` - Definition of a single node behavior. 
+    - `raft_node.py` - Implementation of Raft consensus protocol node.
 - `config.json`: Configuration file specifying the addresses of the nodes in the cluster.
 - `test/`: Directory containing tests that validate various aspects of the implementation, such as leader election, log replication, and message queue functionality. Detailed Guide could be found in testing_report.md.
 
