@@ -4,7 +4,7 @@
 
 This report delves into the implementation specifics of the Raft consensus algorithm within the Raft REST Message Queue (RRMQ) project. Emphasizing the core aspects of leader election, log replication, and fault tolerance, we detail how these components collectively ensure a consistent, distributed state across nodes in the system.
 
-## 2. Structure and Settings
+## 2. Structure
 
 The implementation is divided into three primary Python files:
 
@@ -49,8 +49,7 @@ The implementation is divided into three primary Python files:
     - `GET_TOPIC_FLAG` (-1) for retrieving topics (not explicitly used in the provided `Log` class).
     - `GET_MESSAGE_FLAG` (-2) for consuming a message from a topic.
 
-- Setting:
-  - 
+
 
 ## 3. Part1 Message Queue Implementation
 
