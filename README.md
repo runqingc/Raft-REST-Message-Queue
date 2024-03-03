@@ -1,38 +1,28 @@
+# Raft REST Message Queue (RRMQ)
+
+![Raft](./Raft_Picture.svg)
+
+## Overview
+
+This project implements the Raft consensus algorithm, designed for managing a replicated log across cluster in a distributed system. The Raft algorithm ensures that each node in the cluster agrees upon the same series of log entries to apply to their state machines, achieving consensus even in the face of failures. This implementation covers the core functionalities of Raft, including message queue handling, leader election, log replication.
+
+## Features
+
+- **Message Queue Handling**: Implements a basic message queue that allows clients to create topics, publish messages to topics, and consume messages from topics. This feature demonstrates how Raft can be used to build distributed systems with consistent state
+- **Leader Election**: Dynamically elects a leader among the nodes in the cluster to coordinate log replication. The leader election process is designed to ensure that there is at most one leader per term, addressing scenarios of network partitions and node failures.
+- **Log Replication**: Once a leader is elected, it handles log entries from clients, replicating these entries across the cluster. This ensures that all nodes maintain an up-to-date and consistent log to apply to their state machines.
+- **Fault Tolerance**: Designed to handle failures, allowing the system to continue operating as long as 2N+1 nodes are functional. 
+
+## Project Structure
+
+-  `src/`：
+  - `log.py` - Handling of log entries. 
+  - `node.py` - Definition of a single node behavior. 
+  - `raft_node.py` - Implementation of Raft consensus protocol node.
+- `config.json`: Configuration file specifying the addresses of the nodes in the cluster.
+- `test/`: Directory containing tests that validate various aspects of the implementation, such as leader election, log replication, and message queue functionality. Detailed Guide could be found in testing_report.md.
 
 
 
 
-run test
 
-```sh
-cd test 
-python3 -m pytest message_queue_test.py 
-python3 -m pytest election_test.py
-python3 -m pytest replication_test.py  
-```
-
-
-
-run a single node:
-```sh
-python3 src/node.py config.json 0
-```
-
-
-
-
-你可以想一些test case放在这里
-
-Test case:
-
-所有的日志目前发的都是空，还没implement
-
-没收到heart beat，需要一直发
-
-client request to follower, reply failure
-
-
-
-假设这里的get_topic 会返回所有的topic而不删除topic
-get_message则会把message删除
-在老师的测试用例里貌似没有测连续对一个topic进行两次get 操作的情况
