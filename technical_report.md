@@ -52,7 +52,7 @@ The implementation is divided into three primary Python files:
 - Setting:
   - 
 
-## 3. Part2 Message Queue Implementation
+## 3. Part1 Message Queue Implementation
 
 - ### Topic
 
@@ -127,7 +127,7 @@ The implementation is divided into three primary Python files:
 
 
 
-## 4. Part1 Leader Election Implementation
+## 4. Part2 Leader Election Implementation
 
 - To detail the leader election logic in the provided code, focusing on the transitions between follower, candidate, and follower roles, including function design, variable comparisons, and special case handling:
   1. **Initial State (Follower)**: Each node begins as a follower with a randomized election timeout (`get_randomized_election_timeout()`).
