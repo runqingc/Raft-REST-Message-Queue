@@ -4,7 +4,7 @@
 
 This report delves into the implementation specifics of the Raft consensus algorithm within the Raft REST Message Queue (RRMQ) project. Emphasizing the core aspects of leader election, log replication, and fault tolerance, we detail how these components collectively ensure a consistent, distributed state across nodes in the system.
 
-## 2. Code Structure
+## 2. Structure and Settings
 
 The implementation is divided into three primary Python files:
 
@@ -49,7 +49,8 @@ The implementation is divided into three primary Python files:
     - `GET_TOPIC_FLAG` (-1) for retrieving topics (not explicitly used in the provided `Log` class).
     - `GET_MESSAGE_FLAG` (-2) for consuming a message from a topic.
 
-
+- Setting:
+  - 
 
 ## 3. Part2 Message Queue Implementation
 
@@ -153,53 +154,101 @@ The implementation is divided into three primary Python files:
 
 ## 5. Part3 Log Replication Implementation
 
-- ### Overview
+### Log Replication Process
 
-  Log replication in Raft ensures that all replicated state machines are kept in sync by having the leader node propagate its logs to all follower nodes. This mechanism guarantees that each node in the cluster will eventually store an identical copy of the log, allowing the system to maintain a consistent state.
+1. **Initialization**:
 
-  ### Key Components
+   - Once the node becomes leader, it initialized two variables,
 
-  1. **Leader Election**: Before log replication can occur, a leader must be elected. The leader handles log entries and replicates them to the followers.
-  2. **Log Entries**: Changes to the system state are encapsulated in log entries, which are sequentially indexed. Each entry contains a term number, the command to execute, and potentially other metadata.
-  3. **Commit Index**: This is the index of the highest log entry known to be committed. It's crucial for ensuring consistency across the cluster.
+     - `next_Index[]` : it stores index of the next log entry to send to that server (initialized to leader last log index + 1)
+     - `mach_index[]`: it stores highest log entry known to be replicated on server (initialized to 0, increases monotonically)
 
-  ### Variables and Structures
+   - Once upon success election, the leader send an heart beat to notify all the follower to increase the term
 
-  - `current_term`: The current term of the node, incremented during elections.
-  - `logs[]`: An array storing the log entries.
-  - `commit_index`: The highest log index known to be committed.
-  - `match_index[]`: An array indexed by node ID, storing the highest log index replicated on each server.
-  - `heartbeat_received`: A dictionary tracking the heartbeats received from each node, used to ensure a majority of nodes are still in communication.
+     
 
-  ### Log Replication Process
+2. **Receive Request from Client** 
 
-  1. **Initiation by Leader**:
-     - The leader appends new log entries to its log as it receives commands from clients.
-     - It then sends an `AppendEntries` RPC to each of the follower nodes containing the new entries.
-  2. **Appending Entries**:
-     - Followers append the entries if the log entries are consistent with their logs (i.e., if the previous log index and term match their log).
-     - Each follower responds to the leader, indicating success or failure.
-  3. **Updating `match_index` and `commit_index`**:
-     - On successful replication, the leader updates the `match_index` for each follower.
-     - The leader examines its `match_index` array to find the highest log index replicated on a majority of nodes and updates its `commit_index` accordingly.
-  4. **Committing Entries**:
-     - Once the `commit_index` is advanced, the leader applies the log entries up to the `commit_index` to its state machine and informs followers to do the same in subsequent `AppendEntries` RPCs.
+   - The leader appends new log entries to its log as it receives commands from clients(put topic, put message, get message).
+   - Set Append Entry RPC variable value:
+     - `prevLogIndex` for Each Follower**: This is determined based on the `nextIndex` for each follower. `prevLogIndex` is set to `nextIndex[follower] - 1`. 
+     - `prevLogTerm` for Each Follower**: This is based on the `prevLogIndex` and is set to the term of the log entry at `prevLogIndex` in the leader's log. 
+     - **Entries to Send**: The leader includes log entries starting from `nextIndex[follower]` to the end of its log.
+     - `leaderCommit`, `term`, `leaderId`
+   - then it send `AppendEntries RPC` to each of the follower nodes containing the new entries.
 
-  ### Methods and Execution
+   
 
-  - `send_append_entries(server, data)`: Sends an `AppendEntries` RPC to a follower. It contains log entries to replicate, along with the leader's `commit_index`.
-  - `send_heartbeat()`: This method sends heartbeat messages (which are essentially `AppendEntries` RPCs with no log entries) to each follower to maintain authority and replicate any outstanding logs.
-  - `leader_try_to_commit()`: This method is invoked by the leader to update its `commit_index` based on the replication progress (`match_index` array). It tries to find the highest index replicated on a majority of nodes.
-  - `apply_to_state_machine(index)`: Applies the command specified in the log entry at the given index to the state machine. This is done after the entry is committed.
-  - `increment_heartbeat_received(from_id)`: Increments the count of heartbeats received from a specific node. This helps in determining if the leader is still in the majority.
-  - `check_majority_heartbeats()`: Checks if heartbeats have been received from the majority of nodes. This is crucial for the leader to decide whether it should step down.
+3. **Follower Handle Append Entries RPC**:
 
-  ### Locks
+   - Once the nodes receive the `AppendEntries RPC`, it will go through all the following test:
 
-  To ensure thread safety, especially when accessing and modifying shared data structures like `logs`, `commit_index`, `match_index`, and `heartbeat_received`, the code makes use of a `state_lock`. This lock is critical for maintaining consistency across the system state in a concurrent environment.
+     - **Term Check**: The receiver first compares the term in the RPC with its own `current term`. If the RPC's term is less than the receiver's current term, the receiver rejects the RPC and responds with `false`.
 
-## 6. Conclusion
+     - **Log Consistency Check**: The receiver checks if its log contains an entry at `prevLogIndex` whose term matches `prevLogTerm`. If it does not find such an entry, it rejects the RPC and responds with `false`, and nodes `current term`.
 
-RRMQ successfully implements a distributed message queue using the Raft consensus algorithm, ensuring data consistency and fault tolerance. Through detailed design and robust implementation of leader election, log replication, and message queue management, RRMQ represents a resilient distributed system capable of handling dynamic cluster changes and node failures.
+     - **Conflict Resolution**: If there is a conflict between an existing entry in the receiver's log and a new entry in the same index (same index but different terms), the receiver deletes the existing entry and all following it. 
 
-This report has dissected the essential components and functions integral to RRMQ's operation, demonstrating the comprehensive application of the Raft algorithm to manage distributed systems effectively.
+     - **Appending Entries**: If there are new entries in the `AppendEntries` RPC that are not present in the receiver's log, it appends these entries to its log.
+
+     - **Leader Commit Check**: If `leaderCommit` (the leader’s commit index) in the RPC is greater than the receiver's `commitIndex`, the receiver sets its `commitIndex` to the minimum of `leaderCommit` and the index of the last new entry
+
+       
+
+4. **Leader Handle Followers Response**:
+
+   - ==Successful Response==
+
+     When a leader receives a successful response (`true`) to an `AppendEntries` RPC:
+
+     1. **Update `matchIndex`**: Set `matchIndex` for a follower to the index of the highest log entry known to be replicated on that follower. 
+     2. **Update `nextIndex`**: Set`nextIndex` to the `matchIndex` for that follower plus one. 
+     3. **Try to Commit Entries**: The leader checks if there are entries that can now be considered committed. 
+
+   - ==Failed Response==
+
+     When a leader receives a failed response (`false`) indicating a log inconsistency:
+
+     1. **Decrement `nextIndex`**: The leader decrements the `nextIndex` for the follower that sent the failed response. 
+     2. **Retry `AppendEntries` RPC**
+
+5. **Committing Entries**:
+
+   - The leader looks for the highest index `N` such that:
+
+     - `N` is greater than the leader's current `commitIndex`,
+     - A majority of `matchIndex[i]` (for all servers `i`) are greater than or equal to `N`,
+     - And the term of the log entry at index `N` is equal to the leader’s current term.
+
+     If such an `N` exists, the leader sets its `commitIndex` to `N` and applies the log entries up to `N` to its state machine. 
+
+### Locks
+
+To ensure thread safety, especially when accessing and modifying shared data structures like `logs`, `commit_index`, `match_index`, and `heartbeat_received`, the code makes use of a `state_lock`. This lock is critical for maintaining consistency across the system state in a concurrent environment.
+
+## 6. Shortcomings and Discussion
+
+#### Part1
+
+- Scalability: The current approach does not explicitly address scalability issues. As the number of topics or messages grows, the system might struggle with performance due to the linear search of topics and messages.
+- Efficiency: The system processes GET and PUT requests sequentially. In high-load scenarios, this could lead to bottlenecks. Implementing more efficient data structures or introducing caching mechanisms could mitigate this issue.
+
+#### Part2
+
+- Fault-Tolerance: when during the election, more than half of the nodes shut down, the system will not select a new leader.
+
+#### Part3
+
+- Efficiency in Log Matching: Optimizing the process to reduce the number of required AppendEntries RPCs for log inconsistency resolution could enhance performance.
+
+
+
+
+
+## 7. Reference
+
+- raft web: https://raft.github.io/
+
+- raft paper detail elobration: https://github.com/maemual/raft-zh_cn/blob/master/raft-zh_cn.md
+
+- Raft paper
