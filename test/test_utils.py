@@ -10,6 +10,7 @@ import socket
 MESSAGE = "/message"
 TOPIC = "/topic"
 STATUS = "/status"
+WRONG = "/wrong"
 
 FOLLOWER = "Follower"
 LEADER = "Leader"
@@ -95,7 +96,9 @@ class Node:
 
     def get_status(self):
         return requests.get(self.address + STATUS, timeout=REQUEST_TIMEOUT)
-
+    
+    def send_wrong_command(self):
+        return requests.post(self.address + WRONG, timeout=REQUEST_TIMEOUT)
 
 class Swarm:
     def __init__(self, program_file_path: str, num_nodes: int):

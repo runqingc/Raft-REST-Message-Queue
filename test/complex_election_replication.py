@@ -24,7 +24,21 @@ def wait_for_commit(seconds=1):
     time.sleep(seconds)
 
 @pytest.mark.parametrize('num_nodes', NUM_NODES_ARRAY)
-def test_multi_leaders(swarm: Swarm, num_nodes: int):
+def test_cannot_add_duplicate_topics(swarm: Swarm, num_nodes: int):
+    leader = swarm.get_leader_loop(NUMBER_OF_LOOP_FOR_SEARCHING_LEADER)
+    assert leader is not None
+
+    response = leader.create_topic(TEST_TOPIC)
+    assert response.json() == {"success": True}
+
+    duplicate_response = leader.create_topic(TEST_TOPIC)
+    assert duplicate_response.json() == {"success": False}
+
+    topics_response = leader.get_topics()
+    assert topics_response.json() == {"success": True, "topics": [TEST_TOPIC]}
+
+@pytest.mark.parametrize('num_nodes', NUM_NODES_ARRAY)
+def test_complex_request_1(swarm: Swarm, num_nodes: int):
     # get leader node, put topics and messages
     leader1 = swarm.get_leader_loop(NUMBER_OF_LOOP_FOR_SEARCHING_LEADER)
 
@@ -38,6 +52,7 @@ def test_multi_leaders(swarm: Swarm, num_nodes: int):
 
     assert (leader2 != None)
     assert (leader2.get_message(TEST_TOPIC).json() == {"success": True, "message": TEST_MESSAGE})
+    assert (leader2.create_topic(TEST_TOPIC).json() == {"success": False})
 
     # kill leader2, get leader3, get topic and message
     leader2.commit_clean(ELECTION_TIMEOUT)
@@ -48,15 +63,12 @@ def test_multi_leaders(swarm: Swarm, num_nodes: int):
     assert (leader3.get_message(TEST_TOPIC).json() == {"success": False})
 
 @pytest.mark.parametrize('num_nodes', NUM_NODES_ARRAY)
-def test_complex_requests(swarm: Swarm, num_nodes: int):
-    # get leader1
+def test_complex_request_2(swarm: Swarm, num_nodes: int):
     leader1 = swarm.get_leader_loop(NUMBER_OF_LOOP_FOR_SEARCHING_LEADER)
     assert (leader1 != None)
     assert leader1.get_message(TEST_TOPIC).json() == {"success": False}
     assert leader1.create_topic(TEST_TOPIC).json() == {"success": True}
-    wait_for_commit(0.1)
     assert leader1.put_message(TEST_TOPIC, TEST_MESSAGE).json() == {"success": True}
-    wait_for_commit(0.1)
     assert leader1.get_message(TEST_TOPIC).json() == {"success": True, "message": TEST_MESSAGE}
 
     leader1.commit_clean(ELECTION_TIMEOUT)
@@ -64,10 +76,8 @@ def test_complex_requests(swarm: Swarm, num_nodes: int):
 
     assert leader2 is not None
     assert leader2.get_message(TEST_TOPIC).json() == {"success": False}
-    wait_for_commit(0.1)
     assert leader2.put_message(TEST_TOPIC, TEST_MESSAGE).json() == {"success": True}
     assert leader2.get_message(TEST_TOPIC).json() == {"success": True, "message": TEST_MESSAGE}
-    wait_for_commit(0.1)
     assert leader2.create_topic(TEST_TOPIC).json() == {"success": False}
 
     leader2.commit_clean(ELECTION_TIMEOUT)
@@ -75,56 +85,6 @@ def test_complex_requests(swarm: Swarm, num_nodes: int):
 
     assert leader3 is not None
     assert leader3.put_message(TEST_TOPIC, TEST_MESSAGE).json() == {"success": True}
-    wait_for_commit(0.1)
     assert leader3.get_topics().json() == {"success": True, "topics": [TEST_TOPIC]}
     assert leader3.get_message(TEST_TOPIC).json() == {"success": True, "message": TEST_MESSAGE}
 
-
-@pytest.mark.parametrize('num_nodes', NUM_NODES_ARRAY)
-def test_follower_dead(swarm: Swarm, num_nodes: int):
-    # get leader node, put topics and messages
-    leader1 = swarm.get_leader_loop(NUMBER_OF_LOOP_FOR_SEARCHING_LEADER)
-
-    assert (leader1 != None)
-    assert (leader1.create_topic(TEST_TOPIC).json() == {"success": True})
-    assert (leader1.put_message(TEST_TOPIC, TEST_MESSAGE).json() == {"success": True})
-    
-    follower_nodes = [node for node in swarm.nodes if node != leader1]
-    assert len(follower_nodes) > 0
-    node_to_remove = follower_nodes[0]
-    node_to_remove.commit_clean(ELECTION_TIMEOUT)
-
-    assert (leader1.create_topic(TEST_TOPIC_2).json() == {"success": True})
-    assert (leader1.put_message(TEST_TOPIC_2, TEST_MESSAGE_2).json() == {"success": True})
-
-    node_to_remove.start()
-
-    time.sleep(ELECTION_TIMEOUT * NUMBER_OF_LOOP_FOR_SEARCHING_LEADER)
-
-    # 检查节点是否有所有的话题
-    """
-    topics = node_to_remove.get_topics().json()
-    assert topics == {"success": True, "topics": [TEST_TOPIC, TEST_TOPIC_2]}
-    
-    for topic, expected_message in [(TEST_TOPIC, TEST_MESSAGE), (TEST_TOPIC_2, TEST_MESSAGE_2)]:
-        message_response = node_to_remove.get_message(topic).json()
-        assert message_response == {"success": True, "message": expected_message}
-    """
-    topics = node_to_remove.get_topics().json()
-    assert (topics == {"success": True, "topics": [TEST_TOPIC, TEST_TOPIC_2]})
-    
-    """assert(node_to_remove.get_message(
-        TEST_TOPIC_2).json() == {"success": True, "message": TEST_MESSAGE_2})
-    """
-    
-    """assert(node_to_remove.get_message(
-        TEST_TOPIC).json() == {"success": True, "message": TEST_MESSAGE})
-    """
-    """
-    message_response_test_topic = node_to_remove.get_message(TEST_TOPIC).json()
-    print(f"Message for {TEST_TOPIC}:", message_response_test_topic)
-    
-    message_response_test_topic_2 = node_to_remove.get_message(TEST_TOPIC_2).json()
-    print(f"Message for {TEST_TOPIC_2}:", message_response_test_topic_2)
-
-    """

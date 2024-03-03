@@ -7,6 +7,10 @@ from raft_node import RaftNode
 from threading import Thread
 from log import Log
 
+FOLLOWER = "Follower"
+LEADER = "Leader"
+CANDIDATE = "Candidate"
+
 PUT_TOPIC_FLAG = 1
 PUT_MESSAGE_FLAG = 2
 GET_TOPIC_FLAG = -1
@@ -40,6 +44,8 @@ def add_log_entry(term, topic, message="", flag=None):
 # Put a topic
 @external_app.route('/topic', methods=['PUT'])
 def create_topic():
+    if raft_node.role != LEADER:
+        return jsonify(success=False), 400
     topic = request.json.get('topic')
     if topic and topic not in raft_node.state_machine:
         log_index = add_log_entry(raft_node.current_term, topic, flag=PUT_TOPIC_FLAG)
@@ -62,6 +68,8 @@ def get_topics():
 # Put a message
 @external_app.route('/message', methods=['PUT'])
 def put_message():
+    if raft_node.role != LEADER:
+        return jsonify(success=False), 400
     topic, message = request.json.get('topic'), request.json.get('message')
     if topic in raft_node.state_machine:
         log_index = add_log_entry(raft_node.current_term, topic, message, PUT_MESSAGE_FLAG)
@@ -75,14 +83,32 @@ def put_message():
 
 
 def await_commit_confirmation(log_index):
+    """    
+    active_nodes = sum(1 for count in raft_node.heartbeat_received.values() if count > 0)
+    majority_needed = len(raft_node.config['addresses']) // 2 + 1
+
+    if active_nodes < majority_needed:
+        # Immediately return False if not enough active nodes for majority
+        return False
+    
+
+
+    with ThreadPoolExecutor() as executor:
+        future = executor.submit(wait_for_commit, log_index, CLIENT_REQUEST_TIMEOUT)
+        return future.result()
+    """
     with ThreadPoolExecutor() as executor:
         future = executor.submit(wait_for_commit, log_index, CLIENT_REQUEST_TIMEOUT)
         return future.result()
 
-
 # Get a message
 @external_app.route('/message/<topic>', methods=['GET'])
 def get_message(topic):
+
+    if raft_node.role != LEADER:
+        return jsonify(success=False), 400
+
+    
     if topic not in raft_node.state_machine or raft_node.state_machine[topic] == []:
         return jsonify(success=False)
     else:

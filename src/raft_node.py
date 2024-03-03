@@ -78,6 +78,7 @@ class RaftNode:
         self.next_index = {}
         # the match_index[1] = 7 means: the server with id = 1 have log0 to log7 same as leader
         self.match_index = []
+        self.heartbeat_received = {}
 
         # Timer used to track the election timeout
         self.timer_generation = 0
@@ -165,6 +166,7 @@ class RaftNode:
         # with self.state_lock:
         self.role = LEADER
         self.vote_count = 0
+        self.reset_heartbeat_received()
         # assume each follower has no match index(?)
         self.match_index = len(self.config['addresses']) * [-1]
         self.match_index[self.id] = len(self.logs) - 1
@@ -174,6 +176,8 @@ class RaftNode:
         self.heartbeat_thread.start()
 
     def send_heartbeat(self):
+        self.reset_heartbeat_received()
+
         current_log_index = len(self.logs) - 1
         serialized_logs = [log.to_dict() for log in self.logs]
         data = {
@@ -198,12 +202,15 @@ class RaftNode:
                         # The follower successfully appended the entry, update match_index accordingly
                         with self.state_lock:  # Assuming you're using a lock to protect shared state
                             self.match_index[server_index] = max(self.match_index[server_index], current_log_index)
+                            self.increment_heartbeat_received(server_index)
                         # try to find if new commit can be made
                         self.leader_try_to_commit()
-
                 except Exception as e:
                     # Handle cases where send_append_entries raises an exception or future.result() fails
                     print(f"Error sending heartbeat to server {server_index}: {e}")
+        if not self.check_majority_heartbeats():
+            return
+        
 
     def start_heartbeat_loop(self):
         print("node " + str(self.id) + "started heart_beat_loop")
@@ -217,10 +224,12 @@ class RaftNode:
     def from_candidate_to_follower(self):
         self.role = FOLLOWER
         self.vote_count = 0
+        self.reset_heartbeat_received()
         self.restart_election_timer()
 
-    def from_leader_to_candidate(self):
+    def from_leader_to_follower(self):
         self.role = FOLLOWER
+        self.reset_heartbeat_received()
         self.heartbeat_thread.join()
 
     # apply log at index-index to state machine
@@ -262,3 +271,17 @@ class RaftNode:
                 self.apply_to_state_machine(index)
             # Update the follower's commit_index to reflect the new commit level
             self.commit_index = new_commit_index
+
+    def reset_heartbeat_received(self):
+        # Reset the heartbeat count at the beginning of each term
+        self.heartbeat_received = {id: 0 for id in range(len(self.config['addresses']))}
+
+    def increment_heartbeat_received(self, from_id):
+        # Increment the heartbeat count received from a specific node
+        if from_id in self.heartbeat_received:
+            self.heartbeat_received[from_id] += 1
+
+    def check_majority_heartbeats(self):
+        # Check if heartbeats have been received from the majority of nodes
+        received_from_majority = sum(1 for count in self.heartbeat_received.values() if count > 0)
+        return received_from_majority > len(self.config['addresses']) / 2
