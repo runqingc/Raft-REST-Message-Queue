@@ -1,4 +1,4 @@
-## RRMQ Test Report
+# RRMQ Test Report
 
  The tests are divided into four main categories: `extra_message_queue_test`, `complex_election_replication`, `capacity_test`, and `fault_tolerance_follower_test`. Below is a summary of each test function and its purpose, all of these test has been passed: 
 
